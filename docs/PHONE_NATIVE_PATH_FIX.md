@@ -1,0 +1,7 @@
+# Native Android launcher directory fix — 2026-11-03
+
+The supplied Xiaomi Android 17 reports show the Linux launcher calling `chdir(/system/bin)`, then failing to open the private `UnrealTournament.ini` or `Default.ini` and stopping in `appInit` with `MisingIni`. The existing compatibility shim redirected only `/system/bin/arm64`, which was observed under the ARM-translated x86-64 emulator. The phone is a native ARM64 process with a 4096-byte page size according to the report.
+
+The debug libc compatibility shim now redirects either exact path to the already configured private game runtime directory. Other paths continue through to Android's `chdir`. A forked Android fixture called the versioned shim with `/system/bin`, `/system/bin/arm64`, and `/`, checking both mappings and the unaffected root path; it passed in the ARM-translated emulator. The updated APK also launched and rendered CityIntro on the emulator. Neither test proves the Xiaomi can now finish startup; further errors can appear once it gets past this point.
+
+The crash reporter now also recognizes a current `Critical:` engine log after the native launcher returns zero, because the phone's failure returned 0 despite a fatal initialization error. An emulator fixture with a synthetic critical log and a zero return generated a report. The compatibility library, runtime archive, and APK catalog were rebuilt together; the debug APK version is 0.3-native-path.

@@ -1,0 +1,3 @@
+GCC_3.0 { global: __gttf2; __subtf3; __multf3; __floatsitf; __fixunstfsi; __extenddftf2; __netf2; __addtf3; _Unwind_Resume; __fixtfsi; ut99_gcc_candidate_marker; };
+GCC_4.2.0 { global: __floatunsitf; } GCC_3.0;
+GCC_4.5.0 { global: __unordtf2; local: *; } GCC_4.2.0;

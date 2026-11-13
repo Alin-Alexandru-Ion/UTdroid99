@@ -1,0 +1,6 @@
+ALAC code from libsndfile 1.2.2, based on Apple ALAC code.
+Copyright (c) 2011 Apple Inc. All rights reserved.
+Copyright: (c) 2001-2011 Apple, Inc.
+Copyright (C) 2012-2015 Erik de Castro Lopo.
+Individual source files carry their respective copyright notices.
+Licensed under the Apache License, Version 2.0; see libsndfile-ALAC-Apache2.txt.

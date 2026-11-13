@@ -1,0 +1,93 @@
+plugins { id 'com.android.application' }
+
+def linuxRuntimeProbe = project.hasProperty('ut99LinuxRuntimeProbe')
+def directRehost = project.hasProperty('ut99DirectRehost')
+def engineFree = project.hasProperty('ut99EngineFree') || linuxRuntimeProbe || directRehost
+
+android {
+    namespace 'org.ut99android.host'
+    compileSdk 36
+    ndkVersion '23.2.8568313'
+    defaultConfig {
+        applicationId 'org.ut99android.host'
+        minSdk 34
+        targetSdk 36
+        versionCode 23
+        versionName '0.23-openal-default'
+        buildConfigField 'boolean', 'ENGINE_FREE_EXPERIMENT', engineFree ? 'true' : 'false'
+        buildConfigField 'boolean', 'LINUX_RUNTIME_PROBE', linuxRuntimeProbe ? 'true' : 'false'
+        buildConfigField 'boolean', 'DIRECT_REHOST', directRehost ? 'true' : 'false'
+        ndk { abiFilters(*(project.hasProperty('probeX86') ? ['arm64-v8a', 'x86_64'] : ['arm64-v8a'])) }
+        externalNativeBuild { cmake { cppFlags '-std=c++17' } }
+    }
+    buildFeatures { buildConfig true }
+    if (linuxRuntimeProbe || directRehost) {
+        // The loader fixture opens its own packaged native library by path.
+        packaging { jniLibs { useLegacyPackaging = true } }
+    }
+    buildTypes {
+        debug {
+            if (directRehost) {
+                applicationIdSuffix '.directprobe'
+                versionNameSuffix '-direct-rehost-test'
+            } else if (linuxRuntimeProbe) {
+                applicationIdSuffix '.linuxprobe'
+                versionNameSuffix '-linux-import-probe'
+            } else if (engineFree) {
+                applicationIdSuffix '.enginefree'
+                versionNameSuffix '-enginefree-prototype'
+            }
+        }
+    }
+    externalNativeBuild { cmake { path file('../native/CMakeLists.txt'); version '3.22.1' } }
+    // SDL's pinned Java host is research-only and compiled into debug builds.
+    sourceSets {
+        debug.java.srcDir "${project.findProperty('ut99SdlSource') ?: rootProject.file('research/SDL2')}/android-project/app/src/main/java"
+        if (engineFree) {
+            debug.java.srcDir 'src/enginefree/java'
+            debug.assets.srcDir 'src/enginefree/assets'
+        }
+        debug.assets.srcDir "${layout.buildDirectory.get().asFile}/generated/debugRuntimeAssets"
+    }
+}
+
+if (engineFree) {
+    dependencies { debugImplementation 'org.apache.commons:commons-compress:1.27.1' }
+}
+
+// Local-only experimental runtime; the bundle is not part of release builds.
+def runtimeBundle = file(project.findProperty('ut99RuntimeBundle') ?: rootProject.file('research/ut99-android-runtime-system.zip'))
+def supportNames = ['libSDL2-2.0.so.0', 'libc.so.6', 'ld-linux-aarch64.so.1',
+        'libpthread.so.0', 'libutlibcprobe.so', 'libdl.so.2', 'libstdc++.so.6',
+        'libm.so.6', 'libgcc_s.so.1', 'libopenal.so.1', 'libxmp.so.4',
+        'libsndfile.so.1', 'libmpg123.so'] as Set
+def verifyDebugRuntime = tasks.register('verifyDebugRuntime') {
+    outputs.upToDateWhen { false }
+    doLast {
+        if (!runtimeBundle.isFile()) throw new GradleException('Run scripts/prepare_shared_runtime.py first')
+        def zip = new java.util.zip.ZipFile(runtimeBundle)
+        try {
+            def originalNames = zip.entries().collect { it.name }
+            if (engineFree) {
+                if (originalNames.size() != supportNames.size() || (originalNames as Set) != supportNames)
+                    throw new GradleException('Engine-free build requires exactly the support-only runtime bundle')
+                return
+            }
+            def names = originalNames.collect { it.toLowerCase(Locale.ROOT) }
+            def forbidden = names.findAll { it == 'cluster.so' || it.contains('fmod') }
+            if (!forbidden.isEmpty()) throw new GradleException("OpenAL-only build cannot contain: ${forbidden}")
+            if (!names.contains('alaudio.so') || !names.contains('libopenal.so.1'))
+                throw new GradleException('OpenAL-only runtime is missing an audio component')
+        } finally { zip.close() }
+    }
+}
+def stageDebugRuntime = tasks.register('stageDebugRuntime', Copy) {
+    inputs.property('engineFree', engineFree)
+    doFirst {
+        if (!runtimeBundle.isFile()) throw new GradleException('Run scripts/prepare_shared_runtime.py first')
+    }
+    from(runtimeBundle)
+    into(layout.buildDirectory.dir('generated/debugRuntimeAssets'))
+    rename { 'ut99-runtime.zip' }
+}
+tasks.matching { it.name == 'preDebugBuild' }.configureEach { dependsOn(stageDebugRuntime, verifyDebugRuntime) }

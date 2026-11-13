@@ -1,0 +1,4 @@
+GLIBCXX_3.4 { global: _ZSt9terminatev; _ZdaPv; _ZdlPv; _Znam; _Znwm; ut99_cxx_candidate_marker; };
+CXXABI_1.3 { global: _ZTIPKw; _ZTIPw; _ZTIi; _ZTVN10__cxxabiv117__class_type_infoE; _ZTVN10__cxxabiv120__si_class_type_infoE; _ZTVN10__cxxabiv121__vmi_class_type_infoE; __cxa_allocate_exception; __cxa_begin_catch; __cxa_end_catch; __cxa_free_exception; __cxa_pure_virtual; __cxa_rethrow; __cxa_throw; __cxa_guard_acquire; __cxa_guard_release; __cxa_guard_abort; __dynamic_cast; __gxx_personality_v0; };
+CXXABI_1.3.8 { global: __cxa_throw_bad_array_new_length; local: *; } CXXABI_1.3;
+CXXABI_1.3.9 { global: _ZdlPvm; } CXXABI_1.3.8;

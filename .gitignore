@@ -1,0 +1,55 @@
+# Local development and generated build output
+/research/
+.gradle/
+build/
+.cxx/
+local.properties
+.idea/
+*.iml
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+Thumbs.db
+
+# Build and release artifacts (publish binaries as reviewed release assets)
+*.[aA][pP][kK]
+*.[aA][aA][bB]
+*.[sS][oO]
+*.so.*
+*.[dD][lL][lL]
+*.[dD][yY][lL][iI][bB]
+*.[eE][xX][eE]
+*.[pP][dD][bB]
+*.zip
+*.tar
+*.gz
+*.bz2
+*.tgz
+*.xz
+*.7z
+*.rar
+
+# User-provided game and patch data
+/UT99/
+/UnrealTournament/
+/Unreal Tournament/
+OldUnreal-UTPatch*
+*.[uU][nN][rR]
+*.[uU][tT][xX]
+*.[uU][aA][xX]
+*.[uU][mM][xX]
+*.[uU]
+*.[iI][nN][tT]
+User.ini
+UnrealTournament.ini
+
+# Signing materials, credentials and local environment
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*

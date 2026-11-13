@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(UT99SDLProbe LANGUAGES C CXX)
+if(NOT SDL_SOURCE_DIR OR NOT EXISTS "${SDL_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "Set SDL_SOURCE_DIR to the pinned SDL2 checkout")
+endif()
+set(SDL_SHARED ON CACHE BOOL "" FORCE)
+set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+set(SDL_TEST OFF CACHE BOOL "" FORCE)
+add_subdirectory("${SDL_SOURCE_DIR}" sdl)
+# Experimental ELF identity only. It does not establish desktop SDL ABI behavior.
+set_target_properties(SDL2 PROPERTIES OUTPUT_NAME "SDL2-2.0" SUFFIX ".so.0")
+target_link_options(SDL2 PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")

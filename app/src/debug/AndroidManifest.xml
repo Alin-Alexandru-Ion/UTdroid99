@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".StorageSetupActivity" android:exported="false" />
+        <activity android:name=".LinuxDisplayActivity" android:exported="false" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".ExperimentalSDLActivity" android:exported="true"
+            android:process=":utexperiment" android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode" />
+    </application>
+</manifest>

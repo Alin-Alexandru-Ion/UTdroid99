@@ -1,0 +1,19 @@
+# Feasibility, 2026-11-01
+
+## Ranked routes
+
+1. **Authorized 469 engine source build:** most direct way to target Bionic, Android windowing and lifecycle while preserving engine behavior, conditional on suitable source and rights. Neither source availability nor buildability has been established. Next: obtain an explicit source/permission answer from the project owner or rights holder.
+2. **Bounded ELF rehosting:** unproven research route. The official v469e archive has 20 AArch64 ELFs; `ut-bin-arm64` requests the Linux interpreter and GNU `libc.so.6`, `libstdc++.so.6`, `libgcc_s.so.1`, `libpthread.so.0` and SDL2. Across the archive, dynamic dependencies not present as regular ELF basenames also include `libdl.so.2`, `libm.so.6`, `librt.so.1`, `libopenal.so.1`, `libSDL2-2.0.so.0`, and `ld-linux-aarch64.so.1`. These names are not proof Android equivalents meet their ABI. Versions include GLIBC_2.17 and GLIBC_2.27, GLIBCXX_3.4 through 3.4.21 as enumerated, and CXXABI_1.3 through 1.3.9 as enumerated. Core.so and VulkanDrv.so have PT_TLS; relocations include AArch64 TLS descriptor and TPREL forms. VulkanDrv needs SDL2 and libdl in addition to engine modules. `Core.so` exports a mangled `appInit`, but static symbols alone establish neither a callable interface nor safe entry.
+3. **Owner decision on a hard blocker:** premature: source rights and a bounded compatibility probe are unresolved. If the probe or rights gate fails, stop this route rather than silently switching engines.
+
+Read-only inspection succeeded with NDK llvm-readelf: 20 ELF members, no skipped regular members and zero readelf exit failures; see the full ignored JSON report. Resolution is basename-based only, does not model search order, symlink aliases, platform symbols, transitive system dependencies or `dlopen`, and is not a load test. Static data alone cannot prove glibc/Bionic, TLS, unwind, signals, SDL, rendering, or 16 KiB runtime compatibility. Nothing here establishes that the original game boots.
+
+## Highest-information next test
+
+On an actual Android ARM64 device, first build a small *original test fixture*, with the GNU-style versioned symbol and TLS patterns measured above, and attempt a controlled Android loader probe while recording errors and keeping original engine code unexecuted. Map versioned imports of `Core.so` to concrete Bionic or replacement implementations, including ABI semantics, before considering an engine load. A fixture failure bounds the naive route; a success only permits a more comprehensive probe and is not proof of engine compatibility.
+
+Update 2026-11-02: [LOADER_PROBE.md](LOADER_PROBE.md) records an ARM64 fixture pass on an x86-64 emulator using ARM translation and the first actual Core.so loader attempt. The latter stopped at missing `libSDL2-2.0.so.0`. The named dependency and binary interfaces must be evaluated; satisfying that name alone will not resolve the remaining GNU dependencies or establish a working engine. A native ARM64 device remains essential for the test originally specified above.
+
+Further probe: an exact-SONAME Android SDL candidate and experimental four-function libdl bridge preloaded in the emulator, and Core then failed at `libstdc++.so.6`. Basic bridge controls passed, but general GNU semantics and C++ exception/unwind interoperability remain unproved. The next bounded experiment should test versioned C++ ABI and exception handling with a synthetic fixture, not treat libc++ symbol-name overlap as compatibility.
+
+Later 2026-11-02 work: see [BOOT_PROGRESS.md](BOOT_PROGRESS.md). Experimental C++, math, and GCC helper candidates allowed the loader to reach missing `libc.so.6`. Synthetic exception cleanup with shared RTTI passed; duplicate RTTI failed even in the unmodified Android C++ control, so this remains an open risk. `Core.so` and the game have not started.

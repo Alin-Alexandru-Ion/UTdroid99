@@ -1,0 +1,1 @@
+PROBE_1.0 { global: probe_versioned_add; local: *; };

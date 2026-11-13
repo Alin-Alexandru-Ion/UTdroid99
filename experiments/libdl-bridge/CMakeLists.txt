@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(UT99LibdlProbe LANGUAGES C)
+add_library(utdlbridge SHARED bridge.c)
+set_target_properties(utdlbridge PROPERTIES OUTPUT_NAME "dl" SUFFIX ".so.2")
+target_link_libraries(utdlbridge PRIVATE dl)
+target_link_options(utdlbridge PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/versions.map" "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")

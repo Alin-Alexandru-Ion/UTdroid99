@@ -1,0 +1,2 @@
+GLIBC_2.17 { global: cos; acos; sqrtf; fmod; atan2; exp; sin; pow; atan; tan; frexpl; log; sqrt; frexp; modf; sincos; cosf; log10; lrint; lrintf; lround; ldexp; local: *; };
+GLIBC_2.27 { global: log2f; powf; } GLIBC_2.17;

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(UT99CxxBaseline LANGUAGES CXX)
+add_library(cxxref_thrower SHARED ../cxx-bridge/inline_thrower.cpp)
+add_library(cxxref_fixture SHARED ../cxx-bridge/inline_fixture.cpp)
+target_link_libraries(cxxref_fixture PRIVATE cxxref_thrower)
+foreach(target cxxref_thrower cxxref_fixture)
+  target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
+endforeach()

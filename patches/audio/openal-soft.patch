@@ -1,0 +1,23 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 55644b0..0b21638 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,3 +1,4 @@
++# UTdroid99 modified this file on 2026-11-12 for Android library naming.
+ # CMake build file list for OpenAL
+ 
+ cmake_minimum_required(VERSION 3.0.2)
+@@ -1441,6 +1442,8 @@ set_target_properties(${IMPL_TARGET} PROPERTIES ${DEFAULT_TARGET_PROPS}
+     OUTPUT_NAME ${LIBNAME}
+     VERSION ${LIB_VERSION}
+     SOVERSION ${LIB_MAJOR_VERSION}
++    # UTdroid99, 2026-11-12: use the Android Linux-compatible library name.
++    SUFFIX ".so.1"
+ )
+ target_compile_definitions(${IMPL_TARGET}
+     PRIVATE AL_BUILD_LIBRARY AL_ALEXT_PROTOTYPES "ALC_API=${EXPORT_DECL}" "AL_API=${EXPORT_DECL}"
+@@ -1776,3 +1779,4 @@ if(EXTRA_INSTALLS)
+         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+ endif()
++

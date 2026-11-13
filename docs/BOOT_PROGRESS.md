@@ -1,0 +1,36 @@
+# Original-engine boot investigation — 2026-11-02
+
+Objective: run the original 469e runtime and its CityIntro map on Android, using the user's locally installed game data. **This has not happened yet.** All experiments below use an x86-64 Android 15 emulator's ARM64 translation; they do not establish physical ARM64 behavior.
+
+## Current loader result
+
+Latest: the original game engine initialized and rendered changing CityIntro scenes in a host-GPU Android emulator using ARM translation. See [CITYINTRO_PROGRESS.md](CITYINTRO_PROGRESS.md) for the exact evidence and experimental limitations.
+
+Update 2026-11-03: an isolated experimental compatibility set allowed both the original `Core.so` and `Engine.so` to return from `dlopen` on an x86-64 Android emulator using ARM translation. Constructors completed, but engine initialization was not called and no UT map has rendered. The load-only libc uses provisional forwards and fail-fast jump-function placeholders; this does not establish a compatible runtime. See [LIBC_PROGRESS.md](LIBC_PROGRESS.md) and ignored `research/engine-load-success.log`.
+
+Earlier baseline: after separately preloading SDL2 and experimental libraries, the original Core load failed at `libc.so.6` not found. The corresponding earlier log is `research/boot-attempt.log`. The experimental replacements are not general GNU ABI implementations and are not packaged in the APK.
+
+## Candidates and controls
+
+- `experiments/cxx-bridge` links the NDK's LLVM libc++ and libc++abi static archives into an experimental `libstdc++.so.6`, exporting the 21 GLIBCXX/CXXABI symbol names and versions imported by Core. Its SHA-256 is `cebe17af61df2d76d568530bfb1277c035c2e3d875739c31302cf8c70423a4bf`. These symbols and synthetic tests do not prove GNU C++ compatibility.
+- The anchored-RTTI fixture threw an integer across shared-library boundaries, ran a cleanup destructor through `_Unwind_Resume@GCC_3.0`, caught the exception, dynamically cast an object whose RTTI is supplied by the throwing library, and deleted it. Result: PASS in the translated emulator. `llvm-readelf` confirms the thrower's `_Unwind_Resume@GCC_3.0` import.
+- The independent inline-RTTI fixture produced `result=0 FAIL` in both local and global thrower loading modes. The same fixture using unmodified NDK libc++ shared libraries also gave `result=0 FAIL` in the same emulator. This is evidence of a reproducible test/environment issue, not proof that the candidate alone caused it or that the original game will exhibit it. Actual module RTTI, loader scope, emulator translation, and physical ARM64 behavior remain to be investigated.
+- `experiments/libm-bridge` forwards 13 Core-imported math functions to Bionic using versioned ARM64 tail calls. Its SHA-256 is `41b6c474eff8eaf50a792e50b29ec46eac8882a7b40e474f7b74c5e7a773239f`. Versioned `cos(0)`, `pow(2,3)` and `sqrtf(9)` controls passed; rounding, exceptions, errno, long-double edge cases and full ABI behavior remain untested.
+- `experiments/libgcc-bridge` exposes versioned aliases for 11 compiler-rt binary128 helpers and `_Unwind_Resume`, using renamed copies of the installed NDK archives in the ignored build directory to avoid recursive alias binding. Its SHA-256 is `a6c2c10ec590ee79c63b53f11f1eb7dbcaef359efa53730176dbe92be782005a`. A versioned integer-to-binary128/add/convert-back test passed, and the anchored C++ cleanup fixture used `_Unwind_Resume`. Other values, GCC semantics, and interactions between multiple unwind runtimes remain unverified.
+- `experiments/libc-probe` began with a versioned `__errno_location` adapter; separate parent/worker errno values and locations passed. It now includes restricted test-only mutex and condition side tables and a synthetic versioned pthread fixture, described in [THREADING_ABI.md](THREADING_ABI.md), plus C-locale table accessors tested against pinned glibc data in [CTYPE_ABI.md](CTYPE_ABI.md). It is **not** `libc.so.6` and cannot load the engine.
+
+## Why libc is the present boundary
+
+`scripts/audit_glibc_requirements.py` generated `research/glibc-requirements.json` from the 20 previously audited native binaries and API-31 NDK stubs. It records 287 distinct GLIBC-versioned symbol/type pairs, of which 25 names were absent from the selected Android libc, libm, and libdl stubs. This name inventory is not ABI validation. Core alone has 129 unique GLIBC-versioned import names, including pthread functions, `FILE*` functions and imported data objects (`stderr`, `environ`, `__environ`, and `__stack_chk_guard`). Other components also import `stdin` and `stdout`; the Linux executable imports `__libc_start_main`.
+
+This makes a simple library rename or generic call-forwarder unsafe: opaque structures, global data, signal/thread state, symbol versions, TLS, locale, standard I/O, and error semantics need explicit matching or adapters. The [glibc thread structure definitions](https://raw.githubusercontent.com/bminor/glibc/glibc-2.31/sysdeps/nptl/bits/thread-shared-types.h) and [Bionic mutex implementation](https://android.googlesource.com/platform/bionic/+/4b1c6e73850d2e77c6d05a2f7dad8e3e8c928103/libc/bionic/pthread_mutex.cpp) illustrate why function names alone are insufficient. Their exact use in the engine still needs further analysis. The previous inline-RTTI failure remains open.
+
+## Reproduction
+
+The existing pinned SDL, `libdl`, archive and host setup are documented in `LOADER_PROBE.md`. Configure each additional independent experiment with NDK `23.2.8568313`, CMake `3.22.1`, Ninja, `ANDROID_ABI=arm64-v8a`, `ANDROID_PLATFORM=android-31`, and `CMAKE_BUILD_TYPE=Release`. Configure/build `libgcc-bridge` first; configure `cxx-bridge` with `ANDROID_STL=none` and `GCC_BRIDGE=<absolute path to research/libgcc-bridge-build/libgcc_s.so.1>`. Build `libm-bridge`, `libc-probe`, and `cxx-baseline` (the last with `ANDROID_STL=c++_shared`). Build the host with `gradlew.bat --offline --no-daemon assembleDebug`.
+
+After building all inputs and generating the glibc C-locale test reference, use `scripts/run_android_probe.ps1 -Serial <explicit serial> -Probe cxx` (or `core`, `math`, `gcc`, `errno`, `mutex`, `condition`, `ctype`, `event`, `inline`, `inline_global`, `inline_reference`). It verifies the pinned Core hash, stages the research libraries read-only inside this debug app's private storage, and does not install commercial content. Inspect `adb -s <serial> logcat -d -s UT99Host:I '*:S'`. The script replaces only the named research files in this app's private directory. Do not use the buttons to load arbitrary downloaded native code.
+
+Next concrete work is to specify and test a bounded libc compatibility layer around the actual call sites, beginning with data objects and threading rather than blindly satisfying `DT_NEEDED`. In parallel, investigate a properly licensed complete 469 source-build route. Reaching the original SDL loop and adapting its renderer and Android surface, then loading the locally owned CityIntro and its dependencies, remain future work.
+
+The separately tested partial candidate has 65 exact Core name/version/type matches and 64 missing. A newer load-only candidate covers all 129 names with provisional implementations; neither count proves ABI behavior. The original Core and Engine load result above uses the newer candidate.

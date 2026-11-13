@@ -1,0 +1,218 @@
+diff --git a/android-project/app/src/main/java/org/libsdl/app/SDLActivity.java b/android-project/app/src/main/java/org/libsdl/app/SDLActivity.java
+index 974044f..95847a9 100644
+--- a/android-project/app/src/main/java/org/libsdl/app/SDLActivity.java
++++ b/android-project/app/src/main/java/org/libsdl/app/SDLActivity.java
+@@ -2064,10 +2064,12 @@ class SDLInputConnection extends BaseInputConnection {
+                 /* Higher code points don't generate simulated scancodes */
+                 if (codePoint < 128) {
+                     nativeGenerateScancodeForUnichar((char)codePoint);
++                } else {
++                    SDLInputConnection.nativeCommitText(new String(Character.toChars(codePoint)), 0);
+                 }
+                 offset += Character.charCount(codePoint);
+             }
+-            SDLInputConnection.nativeCommitText(pendingText, 0);
++            // UT99Android: printable ASCII was sent between the key edges above.
+         }
+         mCommittedText = text;
+     }
+diff --git a/android-project/app/src/main/java/org/libsdl/app/SDLControllerManager.java b/android-project/app/src/main/java/org/libsdl/app/SDLControllerManager.java
+index 9d8b20b..ff59ce8 100644
+--- a/android-project/app/src/main/java/org/libsdl/app/SDLControllerManager.java
++++ b/android-project/app/src/main/java/org/libsdl/app/SDLControllerManager.java
+@@ -115,8 +115,8 @@ public class SDLControllerManager
+         }
+         */
+ 
++        // UT99Android diagnostic alteration: a DPAD-only keyboard is not a gamepad.
+         return ((sources & InputDevice.SOURCE_CLASS_JOYSTICK) != 0 ||
+-                ((sources & InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD) ||
+                 ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD)
+         );
+     }
+@@ -205,11 +205,27 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
+         mJoysticks = new ArrayList<SDLJoystick>();
+     }
+ 
++    private static int ut99ControllerPriority(int deviceId) {
++        InputDevice device = InputDevice.getDevice(deviceId);
++        if (device == null || !SDLControllerManager.isDeviceSDLJoystick(deviceId)) return -1;
++        int sources = device.getSources();
++        boolean joystick = (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
++        boolean leftStick = device.getMotionRange(MotionEvent.AXIS_X, InputDevice.SOURCE_JOYSTICK) != null
++                && device.getMotionRange(MotionEvent.AXIS_Y, InputDevice.SOURCE_JOYSTICK) != null;
++        return (leftStick ? 8 : 0) + (joystick ? 4 : 0) + (device.isExternal() ? 1 : 0);
++    }
++
+     @Override
+     public void pollInputDevices() {
+         int[] deviceIds = InputDevice.getDeviceIds();
+-
+-        for (int device_id : deviceIds) {
++        Integer[] ordered = new Integer[deviceIds.length];
++        for (int i = 0; i < deviceIds.length; ++i) ordered[i] = deviceIds[i];
++        java.util.Arrays.sort(ordered, (a, b) -> {
++            int priority = Integer.compare(ut99ControllerPriority(b), ut99ControllerPriority(a));
++            return priority != 0 ? priority : Integer.compare(a, b);
++        });
++
++        for (int device_id : ordered) {
+             if (SDLControllerManager.isDeviceSDLJoystick(device_id)) {
+                 SDLJoystick joystick = getJoystick(device_id);
+                 if (joystick == null) {
+@@ -227,7 +243,8 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
+                         if ((range.getSource() & InputDevice.SOURCE_CLASS_JOYSTICK) != 0) {
+                             if (range.getAxis() == MotionEvent.AXIS_HAT_X || range.getAxis() == MotionEvent.AXIS_HAT_Y) {
+                                 joystick.hats.add(range);
+-                            } else {
++                            } else if (joystick.axes.size() < 6) {
++                                // UT99Android: the original engine accepts at most six axes.
+                                 joystick.axes.add(range);
+                             }
+                         }
+@@ -236,7 +253,7 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
+                     mJoysticks.add(joystick);
+                     SDLControllerManager.nativeAddJoystick(joystick.device_id, joystick.name, joystick.desc,
+                             getVendorId(joystickDevice), getProductId(joystickDevice), false,
+-                            getButtonMask(joystickDevice), joystick.axes.size(), getAxisMask(joystick.axes), joystick.hats.size()/2, 0);
++                            ((getButtonMask(joystickDevice) | (1 << 5) | (1 << 15)) & 0xffff), joystick.axes.size(), getAxisMask(joystick.axes), joystick.hats.size()/2, 0);
+                 }
+             }
+         }
+diff --git a/src/events/SDL_keyboard.c b/src/events/SDL_keyboard.c
+index 6b3e9de..964350e 100644
+--- a/src/events/SDL_keyboard.c
++++ b/src/events/SDL_keyboard.c
+@@ -974,6 +974,11 @@ int SDL_SendKeyboardUnicodeKey(Uint32 ch)
+ 
+     /* Send a keydown and keyup for the character */
+     SDL_SendKeyboardKeyInternal(KEYBOARD_VIRTUAL, SDL_PRESSED, code, SDLK_UNKNOWN);
++    /* UT99Android: deliver ASCII text while the matching virtual key is down. */
++    if (ch >= 32 && ch < 127) {
++        char text[2] = { (char)ch, 0 };
++        SDL_SendKeyboardText(text);
++    }
+     SDL_SendKeyboardKeyInternal(KEYBOARD_VIRTUAL, SDL_RELEASED, code, SDLK_UNKNOWN);
+ 
+     if (mod & KMOD_SHIFT) {
+diff --git a/src/joystick/android/SDL_sysjoystick.c b/src/joystick/android/SDL_sysjoystick.c
+index e0c228a..1c461fa 100644
+--- a/src/joystick/android/SDL_sysjoystick.c
++++ b/src/joystick/android/SDL_sysjoystick.c
+@@ -110,13 +110,13 @@ static int keycode_to_SDL(int keycode)
+         button = SDL_CONTROLLER_BUTTON_BACK;
+         break;
+     case AKEYCODE_BUTTON_MODE:
+-        button = SDL_CONTROLLER_BUTTON_GUIDE;
++        button = -1; /* Guide is not a gameplay input on Android. */
+         break;
+     case AKEYCODE_BUTTON_L2:
+-        button = 15;
++        button = 5;  /* UT Joystick 6 */
+         break;
+     case AKEYCODE_BUTTON_R2:
+-        button = 16;
++        button = 15; /* UT Joystick 16 */
+         break;
+     case AKEYCODE_BUTTON_C:
+         button = 17;
+@@ -208,10 +208,11 @@ int Android_OnPadDown(int device_id, int keycode)
+     if (button >= 0) {
+         SDL_LockJoysticks();
+         item = JoystickByDeviceId(device_id);
++        SDL_Log("UT99 controller down: id=%d button=%d registered=%d opened=%d", device_id, button, item != NULL, item && item->joystick != NULL);
+         if (item && item->joystick) {
+             SDL_PrivateJoystickButton(item->joystick, button, SDL_PRESSED);
+         } else {
+-            SDL_SendKeyboardKey(SDL_PRESSED, button_to_scancode(button));
++            /* UT99Android: an unopened controller is never a keyboard. */
+         }
+         SDL_UnlockJoysticks();
+         return 0;
+@@ -230,7 +231,7 @@ int Android_OnPadUp(int device_id, int keycode)
+         if (item && item->joystick) {
+             SDL_PrivateJoystickButton(item->joystick, button, SDL_RELEASED);
+         } else {
+-            SDL_SendKeyboardKey(SDL_RELEASED, button_to_scancode(button));
++            /* UT99Android: an unopened controller is never a keyboard. */
+         }
+         SDL_UnlockJoysticks();
+         return 0;
+diff --git a/src/video/SDL_video.c b/src/video/SDL_video.c
+index 2f6c631..44b5054 100644
+--- a/src/video/SDL_video.c
++++ b/src/video/SDL_video.c
+@@ -3502,6 +3502,31 @@ int SDL_GL_LoadLibrary(const char *path)
+     return retval;
+ }
+ 
++/* UT99Android diagnostic-only missing desktop GL hooks. */
++#include <stdio.h>
++#include <stdlib.h>
++static void ut_missing_glGetTexImage(void) { fprintf(stderr, "UNSUPPORTED glGetTexImage was called\n"); fflush(stderr); abort(); }
++static void ut_missing_glGetCompressedTexImage(void) { fprintf(stderr, "UNSUPPORTED glGetCompressedTexImage was called\n"); fflush(stderr); abort(); }
++
++/* UT99Android bounded buffer-storage compatibility experiment. */
++static void ut_glBufferStorage(unsigned int target, ptrdiff_t size, const void *data, unsigned int flags)
++{
++    typedef void (*Storage)(unsigned int, ptrdiff_t, const void *, unsigned int);
++    typedef void (*BufferData)(unsigned int, ptrdiff_t, const void *, unsigned int);
++    Storage storage = (Storage)SDL_GL_GetProcAddress("glBufferStorageEXT");
++    if (storage && SDL_GL_ExtensionSupported("GL_EXT_buffer_storage")) {
++        storage(target, size, data, flags);
++        return;
++    }
++    if (flags & ~0x100u) {
++        fprintf(stderr, "UNSUPPORTED glBufferStorage flags=0x%x\n", flags); fflush(stderr); abort();
++    }
++    BufferData bufferData = (BufferData)SDL_GL_GetProcAddress("glBufferData");
++    if (!bufferData) { fprintf(stderr, "UNSUPPORTED glBufferData\n"); fflush(stderr); abort(); }
++    fprintf(stderr, "UT GL buffer-storage fallback target=0x%x size=%lld flags=0x%x\n", target, (long long)size, flags);
++    bufferData(target, size, data, flags & 0x100u ? 0x88e8u : 0x88e4u);
++}
++
+ void *SDL_GL_GetProcAddress(const char *proc)
+ {
+     void *func;
+@@ -3520,6 +3545,9 @@ void *SDL_GL_GetProcAddress(const char *proc)
+     } else {
+         SDL_SetError("No dynamic GL support in current SDL video driver (%s)", _this->name);
+     }
++    if (!func && !SDL_strcmp(proc, "glBufferStorage")) func = (void *)ut_glBufferStorage;
++    if (!func && !SDL_strcmp(proc, "glGetTexImage")) func = (void *)ut_missing_glGetTexImage;
++    if (!func && !SDL_strcmp(proc, "glGetCompressedTexImage")) func = (void *)ut_missing_glGetCompressedTexImage;
+     return func;
+ }
+ 
+@@ -4111,7 +4139,11 @@ SDL_GLContext SDL_GL_CreateContext(SDL_Window *window)
+         return NULL;
+     }
+ 
++    /* UT99Android diagnostic-only context tracing. */
++    fprintf(stderr, "UT GL request: profile=%d version=%d.%d flags=%d\n", _this->gl_config.profile_mask, _this->gl_config.major_version, _this->gl_config.minor_version, _this->gl_config.flags);
+     ctx = _this->GL_CreateContext(_this, window);
++    fprintf(stderr, "UT GL result: %s error=%s\n", ctx ? "success" : "failure", ctx ? "none" : SDL_GetError());
++    fflush(stderr);
+ 
+     /* Creating a context is assumed to make it current in the SDL driver. */
+     if (ctx) {
+diff --git a/src/video/android/SDL_androidmessagebox.c b/src/video/android/SDL_androidmessagebox.c
+index d30c6e6..5012ce5 100644
+--- a/src/video/android/SDL_androidmessagebox.c
++++ b/src/video/android/SDL_androidmessagebox.c
+@@ -26,9 +26,14 @@
+ #include "SDL_androidmessagebox.h"
+ #include "../../core/android/SDL_android.h"
+ 
++/* UT99Android diagnostic-only alteration: print early errors before SDL Java setup. */
++#include <stdio.h>
+ int Android_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonid)
+ {
+-    return Android_JNI_ShowMessageBox(messageboxdata, buttonid);
++    fprintf(stderr, "SDL early message: %s: %s\n", messageboxdata->title ? messageboxdata->title : "", messageboxdata->message ? messageboxdata->message : "");
++    fflush(stderr);
++    if (buttonid) *buttonid = -1;
++    return 0;
+ }
+ 
+ #endif /* SDL_VIDEO_DRIVER_ANDROID */

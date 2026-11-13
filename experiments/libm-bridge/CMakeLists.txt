@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(UT99MathProbe LANGUAGES C ASM)
+add_library(utmathbridge SHARED bridge.S)
+set_target_properties(utmathbridge PROPERTIES OUTPUT_NAME "m" SUFFIX ".so.6" LINKER_LANGUAGE C)
+target_link_libraries(utmathbridge PRIVATE m)
+target_link_options(utmathbridge PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/versions.map" "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
